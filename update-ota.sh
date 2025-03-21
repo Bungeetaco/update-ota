@@ -777,22 +777,6 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
-# Set proper ownership and permissions for JSON file
-if ! chmod 664 "$WEB_DIR/$(basename "$PATCHED_OTA")"; then
-    log "ERROR" "Failed to set permissions for patched OTA file"
-    exit 1
-fi
-
-if ! chmod 664 "$WEB_DIR/$(basename "$PATCHED_OTA").csig"; then
-    log "ERROR" "Failed to set permissions for signature file"
-    exit 1
-fi
-
-if ! chmod 664 "$WEB_DIR/$DEVICE.json"; then
-    log "ERROR" "Failed to set permissions for JSON file"
-    exit 1
-fi
-
 # Function to clean up old builds from web directory
 cleanup_web_builds() {
     local web_dir="$1"
