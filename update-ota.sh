@@ -211,13 +211,14 @@ check_command "jq"
 
 # Function to download and install tool
 install_tool() {
-    local tool_name="$1"
-    local tool_path="$2"
-    local latest_build="$3"
-    local zip_name="$4"
+    local repo_name="$1"
+    local tool_name="$2"
+    local tool_path="$3"
+    local latest_build="$4"
+    local zip_name="$5"
     
     log "INFO" "Downloading and installing $tool_name..."
-    if ! wget "https://github.com/chenxiaolong/$tool_name/releases/download/v$latest_build/$zip_name" -P "$WORKING_DIR"; then
+    if ! wget "https://github.com/chenxiaolong/$repo_name/releases/download/v$latest_build/$zip_name" -P "$WORKING_DIR"; then
         log "ERROR" "Failed to download $tool_name"
         exit 1
     fi
@@ -240,12 +241,12 @@ latest_cust_build=$(curl -s https://api.github.com/repos/chenxiaolong/Custota/re
 
 # Check and install avbroot if missing
 if [ ! -f "$AVBROOT" ]; then
-    install_tool "avbroot" "$AVBROOT" "$latest_avb_build" "avbroot-$latest_avb_build-x86_64-unknown-linux-gnu.zip"
+    install_tool "avbroot" "avbroot" "$AVBROOT" "$latest_avb_build" "avbroot-$latest_avb_build-x86_64-unknown-linux-gnu.zip"
 fi
 
 # Check and install custota-tool if missing
 if [ ! -f "$CUSTOTA_TOOL" ]; then
-    install_tool "custota" "$CUSTOTA_TOOL" "$latest_cust_build" "custota-tool-$latest_cust_build-x86_64-unknown-linux-gnu.zip"
+    install_tool "Custota" "custota-tool" "$CUSTOTA_TOOL" "$latest_cust_build" "custota-tool-$latest_cust_build-x86_64-unknown-linux-gnu.zip"
 fi
 
 # Verify tools are now available
