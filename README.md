@@ -87,3 +87,43 @@ Required packages:
    sudo chmod 755 /var/run/android-ota
    sudo chmod 755 /var/www/html/ota
    ```
+
+3. Set up cron job for automated updates:
+   ```bash
+   # Edit root's crontab
+   sudo crontab -e
+   
+   # Add one of these lines depending on your needs:
+   
+   # Check for updates daily at 2 AM
+   0 2 * * * /etc/android-ota/update-ota.sh --device husky --notify admin@example.com
+   
+   # Check for updates weekly on Sunday at 3 AM
+   0 3 * * 0 /etc/android-ota/update-ota.sh --device husky --notify admin@example.com
+   
+   # Check for updates every 6 hours
+   0 */6 * * * /etc/android-ota/update-ota.sh --device husky --notify admin@example.com
+   ```
+
+   Common cron patterns:
+   - `0 2 * * *` - Daily at 2 AM
+   - `0 3 * * 0` - Weekly on Sunday at 3 AM
+   - `0 */6 * * *` - Every 6 hours
+   - `0 2,14 * * *` - Twice daily at 2 AM and 2 PM
+   - `0 2 * * 1-5` - Weekdays at 2 AM
+
+   Additional cron options:
+   - Add `--verbose` for detailed logging
+   - Add `--force` to override lock file if needed
+   - Add `--rootless` for no root modifications
+   - Add `--kernelsu` to use KernelSU instead of Magisk
+
+   Example with multiple options:
+   ```bash
+   0 2 * * * /etc/android-ota/update-ota.sh --device husky --verbose --notify admin@example.com
+   ```
+
+   Note: Make sure the script has executable permissions:
+   ```bash
+   sudo chmod +x /etc/android-ota/update-ota.sh
+   ```
