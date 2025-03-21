@@ -71,24 +71,34 @@ Required packages:
 
 2. Create the required directories:
    ```bash
-   sudo mkdir -p /etc/android-ota
-   sudo mkdir -p /etc/android-ota/keys
-   sudo mkdir -p /var/lib/android-ota/ota
-   sudo mkdir -p /var/log/android-ota
-   sudo mkdir -p /var/run/android-ota
-   sudo mkdir -p /var/www/html/ota
+   sudo mkdir -p /opt/android-ota
+   sudo mkdir -p /opt/android-ota/keys
+   sudo mkdir -p /opt/android-ota/ota
    
    # Set proper ownership and permissions for directories
-   sudo chown root:root /etc/android-ota
-   sudo chmod 755 /etc/android-ota
-   sudo chmod 700 /etc/android-ota/keys
-   sudo chmod 755 /var/lib/android-ota/ota
-   sudo chmod 755 /var/log/android-ota
-   sudo chmod 755 /var/run/android-ota
-   sudo chmod 755 /var/www/html/ota
+   sudo chown root:root /opt/android-ota
+   sudo chmod 755 /opt/android-ota
+   sudo chmod 700 /opt/android-ota/keys
+   sudo chmod 755 /opt/android-ota/ota
    ```
 
-3. Set up cron job for automated updates:
+3. Configure web server settings:
+   ```bash
+   # Edit the script to set your web server directory and user/group
+   sudo nano /opt/android-ota/update-ota.sh
+   
+   # Update these variables to match your setup:
+   WEB_DIR="/var/www/your-ota-server"    # Your OTA server directory
+   WEB_USER="your-web-user"              # Web server user
+   WEB_GROUP="your-web-group"            # Web server group
+   
+   # Create and set permissions for your web directory
+   sudo mkdir -p "$WEB_DIR"
+   sudo chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR"
+   sudo chmod 755 "$WEB_DIR"
+   ```
+
+4. Set up cron job for automated updates:
    ```bash
    # Edit root's crontab
    sudo crontab -e
@@ -96,13 +106,13 @@ Required packages:
    # Add one of these lines depending on your needs:
    
    # Check for updates daily at 2 AM
-   0 2 * * * /etc/android-ota/update-ota.sh --device husky --notify admin@example.com
+   0 2 * * * /opt/android-ota/update-ota.sh --device husky --notify admin@example.com
    
    # Check for updates weekly on Sunday at 3 AM
-   0 3 * * 0 /etc/android-ota/update-ota.sh --device husky --notify admin@example.com
+   0 3 * * 0 /opt/android-ota/update-ota.sh --device husky --notify admin@example.com
    
    # Check for updates every 6 hours
-   0 */6 * * * /etc/android-ota/update-ota.sh --device husky --notify admin@example.com
+   0 */6 * * * /opt/android-ota/update-ota.sh --device husky --notify admin@example.com
    ```
 
    Common cron patterns:
@@ -120,10 +130,63 @@ Required packages:
 
    Example with multiple options:
    ```bash
-   0 2 * * * /etc/android-ota/update-ota.sh --device husky --verbose --notify admin@example.com
+   0 2 * * * /opt/android-ota/update-ota.sh --device husky --verbose --notify admin@example.com
    ```
 
    Note: Make sure the script has executable permissions:
    ```bash
-   sudo chmod +x /etc/android-ota/update-ota.sh
+   sudo chmod +x /opt/android-ota/update-ota.sh
    ```
+
+## Configuration ⚙️
+
+### Web Server Settings 🌐
+The script needs to know where to serve the OTA files and which user/group should own them. Edit these variables in the script:
+```bash
+WEB_DIR="/var/www/your-ota-server"    # Your OTA server directory
+WEB_USER="your-web-user"              # Web server user
+WEB_GROUP="your-web-group"            # Web server group
+```
+Common web server configurations:
+- Apache: `/var/www/html/ota` with `www-data:www-data`
+- Nginx: `/var/www/ota` with `www-data:www-data`
+- Custom: Set to match your web server's configuration
+
+## Directory Structure 📁
+```
+/opt/android-ota/           # Main directory
+├── credentials            # Credentials file (600 permissions)
+├── keys/                 # Directory containing encryption keys
+│   ├── avb.key
+│   ├── ota.key
+│   └── ota.crt
+├── kernelsu_boot.img     # (Optional) KernelSU boot image
+├── Magisk-v*.apk        # Magisk APK file
+├── ota/                 # Directory for OTA files
+├── update-ota.log       # Log file
+├── update-ota.lock      # Lock file
+├── update-ota.sh        # Main script
+└── download.py          # Python download script
+```
+
+## Security 🔒
+- Base directory (`/opt/android-ota`) permissions: 755 (drwxr-xr-x)
+- Keys directory (`/opt/android-ota/keys`) permissions: 700 (drwx------)
+- Credentials file permissions: 600 (-rw-------)
+- Private key files permissions: 600 (-rw-------)
+- Public certificate permissions: 644 (-rw-r--r--)
+- Log file permissions: 640 (-rw-r-----)
+- Magisk APK permissions: 644 (-rw-r--r--)
+- KernelSU boot image permissions: 600 (-rw-------)
+- Script uses secure environment variables for passphrases
+- Implements file locking to prevent concurrent runs
+- Validates file integrity with checksums
+
+## Logging 📝
+The script logs all operations to `/opt/android-ota/update-ota.log`. Use `--verbose` for detailed logging.
+
+## Contributing 🤝
+Feel free to submit issues and pull requests.
+
+## License 📄
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
