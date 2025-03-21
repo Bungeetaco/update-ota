@@ -245,7 +245,7 @@ fi
 
 # Check and install custota-tool if missing
 if [ ! -f "$CUSTOTA_TOOL" ]; then
-    install_tool "custota-tool" "$CUSTOTA_TOOL" "$latest_cust_build" "custota-tool-$latest_cust_build-x86_64-unknown-linux-gnu.zip"
+    install_tool "custota" "$CUSTOTA_TOOL" "$latest_cust_build" "custota-tool-$latest_cust_build-x86_64-unknown-linux-gnu.zip"
 fi
 
 # Verify tools are now available
