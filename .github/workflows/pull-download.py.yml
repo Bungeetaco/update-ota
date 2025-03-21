@@ -1,24 +1,26 @@
 name: Fetch download.py
 
 on:
-  workflow_dispatch:  # Manual trigger
+  workflow_dispatch:
   schedule:
-    - cron: '0 0 * * 0'  # Weekly update
+    - cron: '0 0 * * 0'
 
 jobs:
   fetch-file:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v3
-      
+        with:
+          token: ${{ secrets.PAT }}  # Use your PAT for checkout
+          
       - name: Download file
         run: |
           curl -o download.py https://raw.githubusercontent.com/Bungeetaco/google-ota-download/refs/heads/main/download.py
           
       - name: Commit and push if changed
         run: |
-          git config --global user.name 'GitHub Action'
-          git config --global user.email 'action@github.com'
+          git config --global user.name 'GitHub Actions'
+          git config --global user.email 'github-actions@github.com'
           git add download.py
           git diff --quiet && git diff --staged --quiet || git commit -m "Update download.py from Bungeetaco/google-ota-download"
-          git push
+          git push https://${{ secrets.PAT }}@github.com/Bungeetaco/update-ota.git
