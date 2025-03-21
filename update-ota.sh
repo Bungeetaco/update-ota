@@ -204,8 +204,59 @@ echo "$$" > "$LOCK_FILE"
 # Check for required commands
 log "INFO" "Checking required commands..."
 check_command "python3"
-check_command "$AVBROOT"
-check_command "$CUSTOTA_TOOL"
+check_command "curl"
+check_command "wget"
+check_command "unzip"
+check_command "jq"
+
+# Function to download and install tool
+install_tool() {
+    local tool_name="$1"
+    local tool_path="$2"
+    local latest_build="$3"
+    local zip_name="$4"
+    
+    log "INFO" "Downloading and installing $tool_name..."
+    if ! wget "https://github.com/chenxiaolong/$tool_name/releases/download/v$latest_build/$zip_name" -P "$WORKING_DIR"; then
+        log "ERROR" "Failed to download $tool_name"
+        exit 1
+    fi
+    
+    sudo rm -f "$tool_path"
+    sudo unzip -j "$WORKING_DIR/$zip_name" "$tool_name" -d /opt/android-ota
+    sudo chmod 777 "$tool_path"
+    
+    rm "$WORKING_DIR/$zip_name"
+    log "INFO" "$tool_name installed successfully"
+}
+
+# Create working directory for updates if it doesn't exist
+WORKING_DIR="$SCRIPT_DIR/updates"
+mkdir -p "$WORKING_DIR"
+
+# Get latest versions
+latest_avb_build=$(curl -s https://api.github.com/repos/chenxiaolong/avbroot/releases/latest | jq -r .tag_name | sed 's/^v//')
+latest_cust_build=$(curl -s https://api.github.com/repos/chenxiaolong/Custota/releases/latest | jq -r .tag_name | sed 's/^v//')
+
+# Check and install avbroot if missing
+if [ ! -f "$AVBROOT" ]; then
+    install_tool "avbroot" "$AVBROOT" "$latest_avb_build" "avbroot-$latest_avb_build-x86_64-unknown-linux-gnu.zip"
+fi
+
+# Check and install custota-tool if missing
+if [ ! -f "$CUSTOTA_TOOL" ]; then
+    install_tool "custota-tool" "$CUSTOTA_TOOL" "$latest_cust_build" "custota-tool-$latest_cust_build-x86_64-unknown-linux-gnu.zip"
+fi
+
+# Verify tools are now available
+if [ ! -f "$AVBROOT" ]; then
+    log "ERROR" "Failed to install avbroot"
+    exit 1
+fi
+if [ ! -f "$CUSTOTA_TOOL" ]; then
+    log "ERROR" "Failed to install custota-tool"
+    exit 1
+fi
 
 # Check if credentials file exists and has correct permissions
 if [ ! -f "$CREDENTIALS_FILE" ]; then
@@ -244,18 +295,12 @@ mkdir -p "$OTA_DIR" "$KEYS_DIR" "$WEB_DIR"
 # Check for updates to required tools
 log "INFO" "Checking for updates to required tools..."
 
-# Create working directory for updates if it doesn't exist
-WORKING_DIR="$SCRIPT_DIR/updates"
-mkdir -p "$WORKING_DIR"
-
 # Get current versions
 current_avb_build=$(cat "$WORKING_DIR/currentavbbuild.txt" 2>/dev/null || echo "")
 current_cust_build=$(cat "$WORKING_DIR/currentcustbuild.txt" 2>/dev/null || echo "")
 current_magisk_build=$(cat "$WORKING_DIR/currentmagiskbuild.txt" 2>/dev/null || echo "")
 
 # Get latest versions
-latest_avb_build=$(curl -s https://api.github.com/repos/chenxiaolong/avbroot/releases/latest | jq -r .tag_name | sed 's/^v//')
-latest_cust_build=$(curl -s https://api.github.com/repos/chenxiaolong/Custota/releases/latest | jq -r .tag_name | sed 's/^v//')
 latest_magisk_build=$(curl -s https://api.github.com/repos/topjohnwu/magisk/releases/latest | jq -r .tag_name)
 
 # Check and update avbroot if needed
