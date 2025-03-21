@@ -1,27 +1,43 @@
 #!/bin/bash
 
+# Determine installation type and set paths
+if [ "$EUID" -eq 0 ]; then
+    # Root installation
+    INSTALL_DIR="/opt/android-ota"
+    WEB_DIR="/var/www/ota"
+    WEB_USER="www-data"
+    WEB_GROUP="www-data"
+else
+    # Non-root installation
+    INSTALL_DIR="$HOME/android-ota"
+    WEB_DIR="$HOME/public_html/ota"  # Adjust this path as needed
+    WEB_USER="$USER"
+    WEB_GROUP="$USER"
+fi
+
 # Configuration
-CREDENTIALS_FILE="/opt/android-ota/credentials"
+CREDENTIALS_FILE="$INSTALL_DIR/credentials"
 DEVICE="husky"  # Default device, can be overridden with --device argument
 FORCE=false
 INTERACTIVE=false
-KEYS_DIR="/opt/android-ota/keys"
-KERNELSU_BOOT="/opt/android-ota/kernelsu_boot.img"
-LOCK_FILE="/opt/android-ota/update-ota.lock"
-LOG_FILE="/opt/android-ota/update-ota.log"
-MAGISK_APK="/opt/android-ota/Magisk-v28.1.apk"
+KEYS_DIR="$INSTALL_DIR/keys"
+KERNELSU_BOOT="$INSTALL_DIR/kernelsu_boot.img"
+LOCK_FILE="$INSTALL_DIR/update-ota.lock"
+LOG_FILE="$INSTALL_DIR/update-ota.log"
+MAGISK_APK="$INSTALL_DIR/Magisk-v28.1.apk"
 MAGISK_PREINIT_DEVICE="sda10"
 NOTIFY_EMAIL=""
-OTA_DIR="/opt/android-ota/ota"
+OTA_DIR="$INSTALL_DIR/ota"
 PYTHON_SCRIPT="download.py"
 RETENTION_DAYS=31
 ROOTLESS=false
-SCRIPT_DIR="/opt/android-ota"
+SCRIPT_DIR="$INSTALL_DIR"
 USE_KERNELSU=false
 VERBOSE=false
-WEB_DIR="/var/www/ota"
-WEB_GROUP="www-data"
-WEB_USER="www-data"
+
+# Tool paths - always use /opt/android-ota/
+AVBROOT="/opt/android-ota/avbroot"
+CUSTOTA_TOOL="/opt/android-ota/custota-tool"
 
 # Function to log messages with different levels
 log() {
@@ -188,8 +204,8 @@ echo "$$" > "$LOCK_FILE"
 # Check for required commands
 log "INFO" "Checking required commands..."
 check_command "python3"
-check_command "avbroot"
-check_command "custota-tool"
+check_command "$AVBROOT"
+check_command "$CUSTOTA_TOOL"
 
 # Check if credentials file exists and has correct permissions
 if [ ! -f "$CREDENTIALS_FILE" ]; then
@@ -249,9 +265,12 @@ if [[ ! "$latest_avb_build" == "$current_avb_build" ]]; then
         log "ERROR" "Failed to download avbroot update"
         exit 1
     fi
-    sudo rm -f /usr/local/bin/avbroot
-    sudo unzip -j "$WORKING_DIR/avbroot-$latest_avb_build-x86_64-unknown-linux-gnu.zip" avbroot -d /usr/local/bin
-    sudo chmod 777 /usr/local/bin/avbroot
+    
+    # Always install to /opt/android-ota/
+    sudo rm -f /opt/android-ota/avbroot
+    sudo unzip -j "$WORKING_DIR/avbroot-$latest_avb_build-x86_64-unknown-linux-gnu.zip" avbroot -d /opt/android-ota
+    sudo chmod 777 /opt/android-ota/avbroot
+    
     rm "$WORKING_DIR/avbroot-$latest_avb_build-x86_64-unknown-linux-gnu.zip"
     echo "$latest_avb_build" > "$WORKING_DIR/currentavbbuild.txt"
     log "INFO" "avbroot updated successfully"
@@ -264,9 +283,12 @@ if [[ ! "$latest_cust_build" == "$current_cust_build" ]]; then
         log "ERROR" "Failed to download custota-tool update"
         exit 1
     fi
-    sudo rm -f /usr/local/bin/custota-tool
-    sudo unzip "$WORKING_DIR/custota-tool-$latest_cust_build-x86_64-unknown-linux-gnu.zip" -d /usr/local/bin
-    sudo chmod 777 /usr/local/bin/custota-tool
+    
+    # Always install to /opt/android-ota/
+    sudo rm -f /opt/android-ota/custota-tool
+    sudo unzip -j "$WORKING_DIR/custota-tool-$latest_cust_build-x86_64-unknown-linux-gnu.zip" custota-tool -d /opt/android-ota
+    sudo chmod 777 /opt/android-ota/custota-tool
+    
     rm "$WORKING_DIR/custota-tool-$latest_cust_build-x86_64-unknown-linux-gnu.zip"
     echo "$latest_cust_build" > "$WORKING_DIR/currentcustbuild.txt"
     log "INFO" "custota-tool updated successfully"
@@ -374,7 +396,7 @@ fi
 log "INFO" "Patching OTA..."
 if [ "$ROOTLESS" = true ]; then
     log "INFO" "Using rootless mode (no Magisk/KernelSU)"
-    PASSPHRASE_AVB="$PASSPHRASE_AVB" PASSPHRASE_OTA="$PASSPHRASE_OTA" avbroot ota patch \
+    PASSPHRASE_AVB="$PASSPHRASE_AVB" PASSPHRASE_OTA="$PASSPHRASE_OTA" "$AVBROOT" ota patch \
         --input "$OTA_FILE" \
         --output "$PATCHED_OTA" \
         --rootless \
@@ -385,7 +407,7 @@ if [ "$ROOTLESS" = true ]; then
         --pass-ota-env-var PASSPHRASE_OTA
 elif [ "$USE_KERNELSU" = true ]; then
     log "INFO" "Using KernelSU for root access"
-    PASSPHRASE_AVB="$PASSPHRASE_AVB" PASSPHRASE_OTA="$PASSPHRASE_OTA" avbroot ota patch \
+    PASSPHRASE_AVB="$PASSPHRASE_AVB" PASSPHRASE_OTA="$PASSPHRASE_OTA" "$AVBROOT" ota patch \
         --input "$OTA_FILE" \
         --output "$PATCHED_OTA" \
         --prepatched "$KERNELSU_BOOT" \
@@ -396,7 +418,7 @@ elif [ "$USE_KERNELSU" = true ]; then
         --pass-ota-env-var PASSPHRASE_OTA
 else
     log "INFO" "Using Magisk for root access"
-    PASSPHRASE_AVB="$PASSPHRASE_AVB" PASSPHRASE_OTA="$PASSPHRASE_OTA" avbroot ota patch \
+    PASSPHRASE_AVB="$PASSPHRASE_AVB" PASSPHRASE_OTA="$PASSPHRASE_OTA" "$AVBROOT" ota patch \
         --input "$OTA_FILE" \
         --output "$PATCHED_OTA" \
         --magisk "$MAGISK_APK" \
@@ -415,7 +437,7 @@ fi
 
 # Generate signature
 log "INFO" "Generating signature..."
-PASSPHRASE_OTA="$PASSPHRASE_OTA" custota-tool gen-csig \
+PASSPHRASE_OTA="$PASSPHRASE_OTA" "$CUSTOTA_TOOL" gen-csig \
     --input "$PATCHED_OTA" \
     --output "$PATCHED_OTA.csig" \
     --key "$KEYS_DIR/ota.key" \
@@ -429,7 +451,7 @@ fi
 
 # Generate update info JSON file
 log "INFO" "Generating update info JSON file..."
-custota-tool gen-update-info \
+"$CUSTOTA_TOOL" gen-update-info \
     --file "$WEB_DIR/$DEVICE.json" \
     --location "$(basename "$PATCHED_OTA")"
 

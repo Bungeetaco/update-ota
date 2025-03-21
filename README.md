@@ -38,13 +38,13 @@ This project uses several amazing open-source tools:
 
 ### System Requirements 🖥️
 - Linux-based operating system
-- Root access
+- Root access (for initial setup)
 - Python 3
 - `mail` command (optional, for notifications)
 
 ### Required Tools 🛠️
-- `avbroot`
-- `custota-tool`
+- `avbroot` (installed in `/opt/android-ota/`)
+- `custota-tool` (installed in `/opt/android-ota/`)
 - `python3`
 - `curl`
 - `wget`
@@ -71,6 +71,7 @@ Required packages:
 
 2. Create the required directories:
    ```bash
+   # Create main directory and subdirectories
    sudo mkdir -p /opt/android-ota
    sudo mkdir -p /opt/android-ota/keys
    sudo mkdir -p /opt/android-ota/ota
@@ -100,19 +101,12 @@ Required packages:
 
 4. Set up cron job for automated updates:
    ```bash
-   # Edit root's crontab
    sudo crontab -e
    
    # Add one of these lines depending on your needs:
    
    # Check for updates daily at 2 AM
    0 2 * * * /opt/android-ota/update-ota.sh --device husky --notify admin@example.com
-   
-   # Check for updates weekly on Sunday at 3 AM
-   0 3 * * 0 /opt/android-ota/update-ota.sh --device husky --notify admin@example.com
-   
-   # Check for updates every 6 hours
-   0 */6 * * * /opt/android-ota/update-ota.sh --device husky --notify admin@example.com
    ```
 
    Common cron patterns:
