@@ -19,7 +19,7 @@ ROOTLESS=false
 SCRIPT_DIR="/opt/android-ota"
 USE_KERNELSU=false
 VERBOSE=false
-WEB_DIR="/var/www/ota.bungeetaco.com"
+WEB_DIR="/var/www/ota"
 WEB_GROUP="www-data"
 WEB_USER="www-data"
 
