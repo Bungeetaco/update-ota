@@ -1,18 +1,187 @@
 #!/bin/bash
 
-# Determine installation type and set paths
-if [ "$EUID" -eq 0 ]; then
-    # Root installation
-    INSTALL_DIR="/opt/android-ota"
-    WEB_DIR="/var/www/ota"
-    WEB_USER="www-data"
-    WEB_GROUP="www-data"
-else
-    # Non-root installation
-    INSTALL_DIR="$HOME/android-ota"
-    WEB_DIR="$HOME/public_html/ota"  # Adjust this path as needed
-    WEB_USER="$USER"
-    WEB_GROUP="$USER"
+# Function to check directory access
+check_directory_access() {
+    local dir="$1"
+    local check_write="$2"
+    
+    if [ ! -d "$dir" ]; then
+        log "ERROR" "Directory '$dir' does not exist"
+        exit 1
+    fi
+    
+    if [ ! -r "$dir" ]; then
+        log "ERROR" "No read access to directory '$dir'"
+        exit 1
+    fi
+    
+    if [ "$check_write" = true ] && [ ! -w "$dir" ]; then
+        log "ERROR" "No write access to directory '$dir'"
+        exit 1
+    fi
+}
+
+# Function to ensure directory exists with correct permissions
+ensure_directory() {
+    local dir="$1"
+    local perms="$2"
+    local owner="$3"
+    local group="$4"
+    
+    if [ ! -d "$dir" ]; then
+        log "INFO" "Creating directory: $dir"
+        if ! sudo mkdir -p "$dir"; then
+            log "ERROR" "Failed to create directory: $dir"
+            exit 1
+        fi
+    fi
+    
+    log "INFO" "Setting permissions for: $dir"
+    if ! sudo chmod "$perms" "$dir"; then
+        log "ERROR" "Failed to set permissions for: $dir"
+        exit 1
+    fi
+    
+    if ! sudo chown "$owner:$group" "$dir"; then
+        log "ERROR" "Failed to set ownership for: $dir"
+        exit 1
+    fi
+}
+
+# Function to log messages with different levels
+log() {
+    local level="$1"
+    shift
+    local message="$*"
+    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
+    
+    # Format message based on level and always show on console
+    case "$level" in
+        "INFO")
+            echo -e "\033[0;32m[INFO]\033[0m $message"
+            ;;
+        "WARN")
+            echo -e "\033[0;33m[WARN]\033[0m $message"
+            ;;
+        "ERROR")
+            echo -e "\033[0;31m[ERROR]\033[0m $message"
+            ;;
+        "DEBUG")
+            if [ "$VERBOSE" = true ]; then
+                echo -e "\033[0;36m[DEBUG]\033[0m $message"
+            fi
+            ;;
+    esac
+    
+    # Only try to write to log file if we have write access
+    if [ -w "$LOG_FILE" ] || [ -w "$(dirname "$LOG_FILE")" ]; then
+        echo "$timestamp - [$level] $message" >> "$LOG_FILE" 2>/dev/null
+    fi
+}
+
+# Function to check and fix permissions
+check_and_fix_permissions() {
+    local path="$1"
+    local perms="$2"
+    local owner="$3"
+    local group="$4"
+    local type="$5"
+    
+    if [ ! -e "$path" ]; then
+        log "ERROR" "$type '$path' does not exist"
+        log "INFO" "Run: sudo touch $path"
+        log "INFO" "Run: sudo chown $owner:$group $path"
+        log "INFO" "Run: sudo chmod $perms $path"
+        return 1
+    fi
+    
+    local current_perms=$(stat -c %a "$path")
+    local current_owner=$(stat -c %U "$path")
+    local current_group=$(stat -c %G "$path")
+    
+    if [ "$current_perms" != "$perms" ] || [ "$current_owner" != "$owner" ] || [ "$current_group" != "$group" ]; then
+        log "ERROR" "Incorrect permissions/ownership for $type '$path'"
+        log "INFO" "Current: $current_owner:$current_group ($current_perms)"
+        log "INFO" "Required: $owner:$group ($perms)"
+        log "INFO" "Run: sudo chown $owner:$group $path"
+        log "INFO" "Run: sudo chmod $perms $path"
+        return 1
+    fi
+    
+    return 0
+}
+
+# Set installation paths
+INSTALL_DIR="/opt/android-ota"
+WEB_DIR="/var/www/ota"
+WEB_USER="www-data"
+WEB_GROUP="www-data"
+
+# Check if we need to set up directories
+if [ ! -d "$INSTALL_DIR" ] || [ ! -d "$INSTALL_DIR/ota" ] || [ ! -d "$INSTALL_DIR/keys" ] || [ ! -w "$INSTALL_DIR" ]; then
+    echo -e "\033[0;32m[INFO]\033[0m Initial setup required. Requesting root access..."
+    
+    # Try sudo first, fall back to doas if sudo not available
+    if command -v sudo >/dev/null 2>&1; then
+        ELEVATE="sudo"
+    elif command -v doas >/dev/null 2>&1; then
+        ELEVATE="doas"
+    else
+        echo -e "\033[0;31m[ERROR]\033[0m Neither sudo nor doas is available. Cannot perform initial setup."
+        exit 1
+    fi
+    
+    # Create and set up directories with proper permissions
+    $ELEVATE mkdir -p "$INSTALL_DIR"
+    $ELEVATE mkdir -p "$INSTALL_DIR/keys"
+    $ELEVATE mkdir -p "$INSTALL_DIR/ota"
+    $ELEVATE mkdir -p "$INSTALL_DIR/updates"
+    $ELEVATE mkdir -p "$WEB_DIR"
+    
+    # Set proper ownership and permissions
+    $ELEVATE chown root:$WEB_GROUP "$INSTALL_DIR"
+    $ELEVATE chmod 775 "$INSTALL_DIR"
+    
+    $ELEVATE chown root:$WEB_GROUP "$INSTALL_DIR/keys"
+    $ELEVATE chmod 750 "$INSTALL_DIR/keys"  # Group can read but not write
+    
+    $ELEVATE chown root:$WEB_GROUP "$INSTALL_DIR/ota"
+    $ELEVATE chmod 775 "$INSTALL_DIR/ota"
+    
+    $ELEVATE chown root:$WEB_GROUP "$INSTALL_DIR/updates"
+    $ELEVATE chmod 775 "$INSTALL_DIR/updates"
+    
+    $ELEVATE chown $WEB_USER:$WEB_GROUP "$WEB_DIR"
+    $ELEVATE chmod 775 "$WEB_DIR"
+    
+    # Create and set up log file
+    $ELEVATE touch "$LOG_FILE"
+    $ELEVATE chown root:$WEB_GROUP "$LOG_FILE"
+    $ELEVATE chmod 664 "$LOG_FILE"
+    
+    # Create credentials file with proper permissions
+    $ELEVATE touch "$INSTALL_DIR/credentials"
+    $ELEVATE chown root:$WEB_GROUP "$INSTALL_DIR/credentials"
+    $ELEVATE chmod 640 "$INSTALL_DIR/credentials"  # Group can read but not write
+    
+    # Create lock file directory with proper permissions
+    $ELEVATE touch "$LOCK_FILE"
+    $ELEVATE chown root:$WEB_GROUP "$LOCK_FILE"
+    $ELEVATE chmod 664 "$LOCK_FILE"
+    $ELEVATE rm -f "$LOCK_FILE"  # Remove the empty file, just created to set permissions
+    
+    # Check if user is in web group, add if not
+    if ! groups | grep -q "\b${WEB_GROUP}\b"; then
+        echo -e "\033[0;32m[INFO]\033[0m Adding user to ${WEB_GROUP} group..."
+        if ! $ELEVATE usermod -a -G "$WEB_GROUP" "$USER"; then
+            echo -e "\033[0;31m[ERROR]\033[0m Failed to add user to ${WEB_GROUP} group"
+            echo -e "\033[0;32m[INFO]\033[0m Please run: sudo usermod -a -G ${WEB_GROUP} \$USER"
+            exit 1
+        fi
+        echo -e "\033[0;33m[WARN]\033[0m You must log out and back in for group changes to take effect"
+        echo -e "\033[0;32m[INFO]\033[0m Please restart this script after logging back in"
+        exit 0
+    fi
 fi
 
 # Configuration
@@ -35,38 +204,16 @@ SCRIPT_DIR="$INSTALL_DIR"
 USE_KERNELSU=false
 VERBOSE=false
 
-# Tool paths - always use /opt/android-ota/
-AVBROOT="/opt/android-ota/avbroot"
-CUSTOTA_TOOL="/opt/android-ota/custota-tool"
+# Tool paths
+AVBROOT="$INSTALL_DIR/avbroot"
+CUSTOTA_TOOL="$INSTALL_DIR/custota-tool"
 
-# Function to log messages with different levels
-log() {
-    local level="$1"
-    shift
-    local message="$*"
-    local timestamp=$(date '+%Y-%m-%d %H:%M:%S')
-    
-    # Format message based on level
-    case "$level" in
-        "INFO")
-            echo -e "\033[0;32m[INFO]\033[0m $message"
-            ;;
-        "WARN")
-            echo -e "\033[0;33m[WARN]\033[0m $message"
-            ;;
-        "ERROR")
-            echo -e "\033[0;31m[ERROR]\033[0m $message"
-            ;;
-        "DEBUG")
-            if [ "$VERBOSE" = true ]; then
-                echo -e "\033[0;36m[DEBUG]\033[0m $message"
-            fi
-            ;;
-    esac
-    
-    # Always log to file
-    echo "$timestamp - [$level] $message" >> "$LOG_FILE"
-}
+# Create log file if it doesn't exist and set permissions
+if [ ! -f "$LOG_FILE" ]; then
+    sudo touch "$LOG_FILE"
+    sudo chown "root:$WEB_GROUP" "$LOG_FILE"
+    sudo chmod 664 "$LOG_FILE"
+fi
 
 # Function to check if a command exists
 check_command() {
@@ -109,6 +256,7 @@ cleanup() {
     
     # Remove lock file if we created it
     if [ -f "$LOCK_FILE" ] && [ "$(cat "$LOCK_FILE")" = "$$" ]; then
+        log "INFO" "Removing lock file..."
         rm -f "$LOCK_FILE"
     fi
     
@@ -118,7 +266,20 @@ cleanup() {
     
     # Log exit reason
     if [ -n "$signal" ]; then
-        log "INFO" "Script terminated by signal $signal"
+        case "$signal" in
+            "SIGINT")
+                log "INFO" "Script interrupted by user (CTRL-C)"
+                ;;
+            "SIGTERM")
+                log "INFO" "Script terminated"
+                ;;
+            "SIGTSTP")
+                log "INFO" "Script suspended by user (CTRL-Z)"
+                ;;
+            *)
+                log "INFO" "Script terminated by signal $signal"
+                ;;
+        esac
     else
         log "INFO" "Script exited with code $exit_code"
     fi
@@ -132,13 +293,24 @@ cleanup() {
         fi
     fi
     
-    exit $exit_code
+    # If this was SIGTSTP (CTRL-Z), re-raise the signal after cleanup
+    if [ "$signal" = "SIGTSTP" ]; then
+        kill -SIGSTOP $$
+    else
+        exit $exit_code
+    fi
+}
+
+# Function to handle SIGTSTP (CTRL-Z)
+handle_sigtstp() {
+    cleanup "SIGTSTP"
 }
 
 # Set up trap for cleanup
 trap 'cleanup' EXIT
 trap 'cleanup SIGINT' SIGINT
 trap 'cleanup SIGTERM' SIGTERM
+trap 'handle_sigtstp' SIGTSTP
 
 # Parse command line arguments
 while [[ $# -gt 0 ]]; do
@@ -180,9 +352,32 @@ if [ -t 0 ]; then
     INTERACTIVE=true
 fi
 
-# Check if running as root
-if [ "$EUID" -ne 0 ]; then
-    log "ERROR" "This script must be run as root"
+# Check if user is in required group
+if [ "$EUID" -eq 0 ]; then
+    log "WARN" "Running script as root is not recommended for security reasons"
+    log "WARN" "Consider running as a non-root user in the ${WEB_GROUP} group instead"
+elif ! groups | grep -q "\b${WEB_GROUP}\b"; then
+    log "ERROR" "Current user is not in the ${WEB_GROUP} group"
+    log "INFO" "Please log out and back in if you were just added to the group"
+    log "INFO" "Or run: sudo usermod -a -G ${WEB_GROUP} \$USER"
+    exit 1
+fi
+
+# Check if lock file directory is writable
+if [ ! -w "$(dirname "$LOCK_FILE")" ]; then
+    if [ -d "$INSTALL_DIR" ] && [ ! -w "$INSTALL_DIR" ]; then
+        log "ERROR" "Base directory '$INSTALL_DIR' is not writable by group ${WEB_GROUP}"
+        log "INFO" "Run: sudo chmod 775 $INSTALL_DIR"
+        log "INFO" "Run: sudo chown root:${WEB_GROUP} $INSTALL_DIR"
+        exit 1
+    fi
+    log "ERROR" "Cannot write to lock file directory: $(dirname "$LOCK_FILE")"
+    exit 1
+fi
+
+# Check if log file directory is writable
+if [ ! -w "$(dirname "$LOG_FILE")" ]; then
+    log "ERROR" "Cannot write to log file directory: $(dirname "$LOG_FILE")"
     exit 1
 fi
 
@@ -262,16 +457,44 @@ fi
 # Check if credentials file exists and has correct permissions
 if [ ! -f "$CREDENTIALS_FILE" ]; then
     log "ERROR" "Credentials file not found at $CREDENTIALS_FILE"
+    log "INFO" "Please create the credentials file with the following content:"
+    log "INFO" "PASSPHRASE_AVB='your_avb_passphrase'"
+    log "INFO" "PASSPHRASE_OTA='your_ota_passphrase'"
+    log "INFO" "Then set permissions:"
+    log "INFO" "Run: sudo touch $CREDENTIALS_FILE"
+    log "INFO" "Run: sudo chown root:$WEB_GROUP $CREDENTIALS_FILE"
+    log "INFO" "Run: sudo chmod 640 $CREDENTIALS_FILE"
     exit 1
 fi
 
-if [ "$(stat -c %a "$CREDENTIALS_FILE")" != "600" ]; then
-    log "ERROR" "Credentials file must have permissions 600"
+if [ ! -r "$CREDENTIALS_FILE" ]; then
+    log "ERROR" "Cannot read credentials file: $CREDENTIALS_FILE"
+    log "INFO" "Please ensure the file has correct permissions (640) and ownership"
+    log "INFO" "Run: sudo chown root:$WEB_GROUP $CREDENTIALS_FILE"
+    log "INFO" "Run: sudo chmod 640 $CREDENTIALS_FILE"
+    exit 1
+fi
+
+if [ "$(stat -c %a "$CREDENTIALS_FILE")" != "640" ]; then
+    log "ERROR" "Credentials file must have permissions 640"
+    log "INFO" "Current permissions: $(stat -c %a "$CREDENTIALS_FILE")"
+    log "INFO" "Run: sudo chmod 640 $CREDENTIALS_FILE"
+    exit 1
+fi
+
+if [ "$(stat -c %G "$CREDENTIALS_FILE")" != "$WEB_GROUP" ]; then
+    log "ERROR" "Credentials file must be owned by group $WEB_GROUP"
+    log "INFO" "Current group: $(stat -c %G "$CREDENTIALS_FILE")"
+    log "INFO" "Run: sudo chown root:$WEB_GROUP $CREDENTIALS_FILE"
     exit 1
 fi
 
 # Source credentials file
-source "$CREDENTIALS_FILE"
+if ! source "$CREDENTIALS_FILE" 2>/dev/null; then
+    log "ERROR" "Failed to source credentials file"
+    log "INFO" "Please check the file contents and permissions"
+    exit 1
+fi
 
 # Check if required passwords are set
 if [ -z "$PASSPHRASE_AVB" ]; then
@@ -420,24 +643,53 @@ if [ ! -f "$OTA_FILE" ]; then
     fi
 
     # Parse the JSON output to get filename and checksum
-    OTA_FILENAME=$(echo "$OTA_INFO" | jq -r '.filename')
-    OTA_CHECKSUM=$(echo "$OTA_INFO" | jq -r '.checksum')
+    if ! OTA_FILENAME=$(echo "$OTA_INFO" | jq -r '.filename'); then
+        log "ERROR" "Failed to parse filename from JSON output"
+        exit 1
+    fi
+
+    if ! OTA_CHECKSUM=$(echo "$OTA_INFO" | jq -r '.checksum'); then
+        log "ERROR" "Failed to parse checksum from JSON output"
+        exit 1
+    fi
+
+    if [ -z "$OTA_FILENAME" ] || [ "$OTA_FILENAME" = "null" ]; then
+        log "ERROR" "No filename found in JSON output"
+        exit 1
+    fi
+
+    if [ -z "$OTA_CHECKSUM" ] || [ "$OTA_CHECKSUM" = "null" ]; then
+        log "ERROR" "No checksum found in JSON output"
+        exit 1
+    fi
+
     OTA_FILE="$OTA_DIR/$OTA_FILENAME"
 fi
 
-# Get the downloaded OTA filename
-OTA_FILE=$(ls -t "$OTA_DIR"/*.zip 2>/dev/null | head -n1)
+# Get the downloaded OTA filename - explicitly exclude .patched.zip files
+OTA_FILE=$(ls -t "$OTA_DIR"/*.zip 2>/dev/null | grep -v '\.patched\.zip$' | head -n1)
 if [ -z "$OTA_FILE" ]; then
     log "ERROR" "No OTA file found in $OTA_DIR"
     exit 1
 fi
 
-# Generate output filename without timestamp
-PATCHED_OTA="$OTA_DIR/$(basename "$OTA_FILE" .zip | sed 's/_patched$//').patched.zip"
+# Get the base filename without .zip
+OTA_BASENAME=$(basename "$OTA_FILE" .zip)
+
+# Generate output filename - this will be the final patched filename
+PATCHED_OTA="$OTA_DIR/$OTA_BASENAME.patched.zip"
 
 # Check if patched OTA already exists
 if [ -f "$PATCHED_OTA" ]; then
-    log "INFO" "Previous patched OTA found: $PATCHED_OTA"
+    if [ "$FORCE" = true ]; then
+        log "INFO" "Previous patched OTA found, removing due to --force: $(basename "$PATCHED_OTA")"
+        rm -f "$PATCHED_OTA"
+        rm -f "$PATCHED_OTA.csig"
+    else
+        log "INFO" "Previous patched OTA found: $(basename "$PATCHED_OTA")"
+        log "INFO" "Skipping update process. Use --force to override."
+        exit 0
+    fi
 fi
 
 # Patch OTA with Magisk or KernelSU
@@ -497,6 +749,20 @@ if [ $? -ne 0 ]; then
     exit 1
 fi
 
+# Copy files to web directory
+log "INFO" "Copying files to web directory..."
+if ! cp "$PATCHED_OTA" "$WEB_DIR/"; then
+    log "ERROR" "Failed to copy patched OTA file to web directory"
+    exit 1
+fi
+
+if ! cp "$PATCHED_OTA.csig" "$WEB_DIR/"; then
+    log "ERROR" "Failed to copy signature file to web directory"
+    # Clean up the partially copied file
+    rm -f "$WEB_DIR/$(basename "$PATCHED_OTA")"
+    exit 1
+fi
+
 # Generate update info JSON file
 log "INFO" "Generating update info JSON file..."
 "$CUSTOTA_TOOL" gen-update-info \
@@ -505,16 +771,42 @@ log "INFO" "Generating update info JSON file..."
 
 if [ $? -ne 0 ]; then
     log "ERROR" "Failed to generate update info JSON file"
+    # Clean up the copied files
+    rm -f "$WEB_DIR/$(basename "$PATCHED_OTA")"
+    rm -f "$WEB_DIR/$(basename "$PATCHED_OTA").csig"
     exit 1
 fi
 
 # Set proper ownership and permissions for JSON file
-chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR/$(basename "$PATCHED_OTA")"
-chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR/$(basename "$PATCHED_OTA.csig")"
-chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR/$DEVICE.json"
-chmod 664 "$WEB_DIR/$(basename "$PATCHED_OTA")"
-chmod 664 "$WEB_DIR/$(basename "$PATCHED_OTA.csig")"
-chmod 664 "$WEB_DIR/$DEVICE.json"
+if ! chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR/$(basename "$PATCHED_OTA")"; then
+    log "ERROR" "Failed to set ownership for patched OTA file"
+    exit 1
+fi
+
+if ! chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR/$(basename "$PATCHED_OTA").csig"; then
+    log "ERROR" "Failed to set ownership for signature file"
+    exit 1
+fi
+
+if ! chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR/$DEVICE.json"; then
+    log "ERROR" "Failed to set ownership for JSON file"
+    exit 1
+fi
+
+if ! chmod 664 "$WEB_DIR/$(basename "$PATCHED_OTA")"; then
+    log "ERROR" "Failed to set permissions for patched OTA file"
+    exit 1
+fi
+
+if ! chmod 664 "$WEB_DIR/$(basename "$PATCHED_OTA").csig"; then
+    log "ERROR" "Failed to set permissions for signature file"
+    exit 1
+fi
+
+if ! chmod 664 "$WEB_DIR/$DEVICE.json"; then
+    log "ERROR" "Failed to set permissions for JSON file"
+    exit 1
+fi
 
 # Function to clean up old builds from web directory
 cleanup_web_builds() {
@@ -524,8 +816,8 @@ cleanup_web_builds() {
     
     log "INFO" "Cleaning up old builds from web directory..."
     
-    # Get list of builds for the device
-    local builds=($(ls -t "$web_dir"/"$device"-ota-*.zip.patched 2>/dev/null))
+    # Get list of builds for the device, only looking at .patched.zip files
+    local builds=($(ls -t "$web_dir"/"$device"-ota-*.patched.zip 2>/dev/null))
     
     if [ ${#builds[@]} -le 2 ]; then
         log "INFO" "No old builds to clean up"
@@ -535,15 +827,14 @@ cleanup_web_builds() {
     # Keep the two most recent builds
     for ((i=2; i<${#builds[@]}; i++)); do
         local build="${builds[$i]}"
-        local build_base="${build%.zip.patched}"
         
         # Remove the patched OTA file
         rm -f "$build"
         
         # Remove the signature file if it exists
-        rm -f "$build_base.zip.patched.csig"
+        rm -f "$build.csig"
         
-        log "INFO" "Removed old build: $build"
+        log "INFO" "Removed old build: $(basename "$build")"
     done
 }
 
