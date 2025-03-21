@@ -152,6 +152,74 @@ Common web server configurations:
 - Nginx: `/var/www/ota` with `www-data:www-data`
 - Custom: Set to match your web server's configuration
 
+### Script Configuration Variables 🔧
+The following variables can be customized in the script:
+
+```bash
+# Default values and their purposes:
+DEVICE="husky"                        # Default device codename
+FORCE=false                          # Force update even if locked
+INTERACTIVE=false                    # Run in interactive mode
+KEYS_DIR="/opt/android-ota/keys"     # Directory for encryption keys
+KERNELSU_BOOT="/opt/android-ota/kernelsu_boot.img"  # KernelSU boot image path
+LOCK_FILE="/opt/android-ota/update-ota.lock"        # Lock file location
+LOG_FILE="/opt/android-ota/update-ota.log"          # Log file location
+MAGISK_APK="/opt/android-ota/Magisk-v28.1.apk"      # Magisk APK location
+MAGISK_PREINIT_DEVICE="sda10"        # Magisk preinit device
+NOTIFY_EMAIL=""                      # Email for notifications
+OTA_DIR="/opt/android-ota/ota"       # OTA files directory
+PYTHON_SCRIPT="download.py"          # Python download script name
+RETENTION_DAYS=31                    # Days to keep old updates
+ROOTLESS=false                       # Use rootless mode
+SCRIPT_DIR="/opt/android-ota"        # Main script directory
+USE_KERNELSU=false                   # Use KernelSU instead of Magisk
+VERBOSE=false                        # Enable verbose logging
+```
+
+### Email Notifications 📧
+To set up email notifications:
+
+1. Install the mail command:
+   ```bash
+   # For Debian/Ubuntu:
+   sudo apt install mailutils
+   
+   # For RHEL/CentOS:
+   sudo yum install mailx
+   ```
+
+2. Configure your mail settings:
+   ```bash
+   # Edit the mail configuration
+   sudo nano /etc/mail.rc
+   
+   # Add your SMTP settings (example for Gmail):
+   set smtp=smtp.gmail.com:587
+   set smtp-use-starttls
+   set ssl-verify=ignore
+   set from=your-email@gmail.com
+   ```
+
+3. Set up the notification email in the script:
+   ```bash
+   # Edit the script
+   sudo nano /opt/android-ota/update-ota.sh
+   
+   # Set your notification email
+   NOTIFY_EMAIL="your-email@example.com"
+   ```
+
+4. Test the email notification:
+   ```bash
+   # Run the script with --verbose to see email details
+   sudo /opt/android-ota/update-ota.sh --device husky --verbose --notify your-email@example.com
+   ```
+
+Note: For Gmail, you'll need to:
+1. Enable 2-factor authentication
+2. Generate an App Password
+3. Use the App Password in your mail configuration
+
 ## Directory Structure 📁
 ```
 /opt/android-ota/           # Main directory
