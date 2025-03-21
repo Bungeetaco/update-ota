@@ -11,7 +11,7 @@ jobs:
     steps:
       - uses: actions/checkout@v3
         with:
-          token: ${{ secrets.PAT }}  # Use your PAT for checkout
+          token: ${{ secrets.GITHUB_TOKEN }}
           
       - name: Download file
         run: |
@@ -19,8 +19,8 @@ jobs:
           
       - name: Commit and push if changed
         run: |
-          git config --global user.name 'GitHub Actions'
-          git config --global user.email 'github-actions@github.com'
+          git config --global user.name 'github-actions[bot]'
+          git config --global user.email 'github-actions[bot]@users.noreply.github.com'
           git add download.py
           git diff --quiet && git diff --staged --quiet || git commit -m "Update download.py from Bungeetaco/google-ota-download"
-          git push https://${{ secrets.PAT }}@github.com/Bungeetaco/update-ota.git
+          git push
