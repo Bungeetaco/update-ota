@@ -778,21 +778,6 @@ if [ $? -ne 0 ]; then
 fi
 
 # Set proper ownership and permissions for JSON file
-if ! chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR/$(basename "$PATCHED_OTA")"; then
-    log "ERROR" "Failed to set ownership for patched OTA file"
-    exit 1
-fi
-
-if ! chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR/$(basename "$PATCHED_OTA").csig"; then
-    log "ERROR" "Failed to set ownership for signature file"
-    exit 1
-fi
-
-if ! chown "$WEB_USER:$WEB_GROUP" "$WEB_DIR/$DEVICE.json"; then
-    log "ERROR" "Failed to set ownership for JSON file"
-    exit 1
-fi
-
 if ! chmod 664 "$WEB_DIR/$(basename "$PATCHED_OTA")"; then
     log "ERROR" "Failed to set permissions for patched OTA file"
     exit 1
