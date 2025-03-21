@@ -407,9 +407,11 @@ fi
 if [ ! -f "$OTA_FILE" ]; then
     log "INFO" "Fetching latest OTA for $DEVICE..."
     if [ "$INTERACTIVE" = true ]; then
-        OTA_INFO=$(python3 "$SCRIPT_DIR/$PYTHON_SCRIPT" --device "$DEVICE" --output "$OTA_DIR/" --json)
+        # Capture only the last line which should be the JSON output
+        OTA_INFO=$(python3 "$SCRIPT_DIR/$PYTHON_SCRIPT" --device "$DEVICE" --output "$OTA_DIR/" --json 2>/dev/null | tail -n 1)
     else
-        OTA_INFO=$(python3 "$SCRIPT_DIR/$PYTHON_SCRIPT" --device "$DEVICE" --output "$OTA_DIR/" --json --non-interactive)
+        # Capture only the last line which should be the JSON output
+        OTA_INFO=$(python3 "$SCRIPT_DIR/$PYTHON_SCRIPT" --device "$DEVICE" --output "$OTA_DIR/" --json --non-interactive 2>/dev/null | tail -n 1)
     fi
 
     if [ $? -ne 0 ]; then
